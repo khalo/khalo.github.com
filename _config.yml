@@ -9,8 +9,8 @@ title : Taro Mieno
 tagline: blog
 author :
   name : Taro Mieno
-  email : tmieno2@unl.edu
-  github : tmieno2
+  email : khalo@unl.edu
+  github : khalo
   twitter : username
   feedburner : Taro Mieno
 
@@ -38,7 +38,7 @@ scholar:
 # such as sitemap.txt
 # Most places will/should use BASE_PATH to make the urls
 #
-production_url : http://tmieno2.github.com
+production_url : http://khalo.github.com
 
 # The number of posts per page
 paginate: 3
