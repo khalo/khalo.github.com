@@ -1,0 +1,130 @@
+---
+layout: post
+title: Creating a Heat Map using **ggplot2**
+bibliography: bibliography.bib
+tags: [R, spatial, ggplot2, grid, over]
+categories: [R, spatial]
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+<!--{% include JB/setup %} -->
+ 
+
+---------------
+
+In this post, I will show how to make a heat map from a raster data set. We are going to use the yield gap data for maize put together by Mueller et al. (2012). In this post, you will learn to:
+
+* transform SpatialGridDataFrame, the default object class when imported into R using **readGDAL( )**, into a data frame amenable with **geom_tile( )** 
+
+* create a heat map using **geom_tile( )** 
+
+First, load packages we are going to use in this session.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(rgdal)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(raster)
+library(grid)
+```
+
+```{r library, echo=FALSE, message=FALSE}
+library(knitr)
+opts_knit$set(root.dir = '~/Dropbox/tmieno2.github.com/data')
+opts_chunk$set(fig.path='{{ site.url }}/images/heatmap-',dpi=300)
+```
+
+<br />
+
+Let's now import the world map data available from the **ggplot2** package and remove Antarctica. 
+
+
+```{r world, message=FALSE}
+world <- map_data('world') %>% data.table()
+world <- world[region!='Antarctica',]
+```
+
+<br />
+
+This is what the world map looks like.
+
+```{r worldmap}
+g <- ggplot(world, aes(long, lat)) + 
+	geom_polygon(aes(group=group),fill="white",colour="black",size=0.1) +
+	coord_equal() + 
+	scale_x_continuous(expand=c(0,0)) + 
+	scale_y_continuous(expand=c(0,0)) +
+	labs(x='Longitude', y='Latitude') +
+	theme_bw() 
+```
+
+```{r worldmaping,echo=FALSE}
+g
+```
+
+<br />
+
+We'll be superimposing the maize yield gap data onto the world map. Now, let's import the maize yield gap data (downloaded from [here](http://www.earthstat.org/)), which is in geotiff format.
+
+```{r geotiff}
+maize_gap <- readGDAL("maize_yieldgap.tif")
+```
+
+<br />
+
+As a **SpatialGridDataFrame** is not compatible with mapping using **ggplot( )**, we need to convert it into a data frame, in which each observation is assigned the longitude and latitude of the centroid of its corresponding grid. We can achieve this with the following code (If you would like to know the inner works of the function, please run the code line by line),
+
+```{r transform}
+sgdf_transform = function(sgdf){
+  
+  dim <- sgdf@grid@cells.dim
+  bbox <- sgdf@bbox
+  r <- raster(xmn=bbox[1,1], xmx=bbox[1,2], ymn=bbox[2,1], ymx=bbox[2,2], ncols=dim[1], nrows=dim[2])
+  r <- setValues(r,matrix(sgdf@data$band1, nrow = dim[1], ncol = dim[2]) %>% t()) 
+  data <- rasterToPoints(r) %>% data.table()
+  return(data)
+  
+}
+
+maize_gap_data <- sgdf_transform(maize_gap)
+maize_gap_data
+```
+
+<br />
+
+We now add yield gap data on the world map we created before.
+
+```{r mapgap}
+g <- g + 
+	geom_tile(data=maize_gap_data,aes(x, y, fill=layer)) +
+	scale_fill_gradient(low="blue", high="red", name='Yield Gap (ton/ha)') +
+	theme(
+		legend.position = 'bottom',
+		legend.key.size = unit(1, "cm")
+		)
+```
+
+```{r worldmap2,echo=FALSE}
+g
+```
+
+<br />
+<br />
+
+### Session Information
+
+---------------
+
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+<br />
+<br />
+
+### References
+
+---------------
+
+<p><span id="mueller12">Mueller, N. D., Gerber, J. S., Johnston, M., Ray, D. K., Ramankutty, N., &amp; Foley, J. A. (2012). Closing yield gaps through nutrient and water management. <i>Nature</i>, <i>490</i>(7419), 254–257.</span></p>
+

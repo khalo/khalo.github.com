@@ -1,0 +1,289 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>R for Environmental and Resource Economists</title>
+    
+    <meta name="author" content="Taro Mieno">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+    <link rel="alternate" type="application/atom+xml" title="R Entries" href="/atom.xml" />
+
+    <!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <!-- Le styles -->
+    <link href="/assets/themes/twitter-2.0/css/bootstrap.min.css" rel="stylesheet">
+    <style type="text/css" media="screen">
+      body {
+        padding-top: 60px; /* 60px to make the container go all the way to the bottom of the topbar */
+      }
+    </style>
+    <link href="/assets/themes/twitter-2.0/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/assets/themes/twitter-2.0/css/style.css?body=1" rel="stylesheet" type="text/css" media="all">
+    <link href="/assets/themes/twitter-2.0/css/syntax.css" rel="stylesheet" type="text/css">
+
+    <!-- Le fav and touch icons -->
+    <link rel="shortcut icon" href="/figs/favicon.ico">
+  <!-- Update these with your own images
+    <link rel="apple-touch-icon" href="/figs/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/figs/apple-touch-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/figs/apple-touch-icon-114x114.png">
+  -->
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </a>
+          <a class="brand" href="/">Taro Mieno</a>
+          <div class="nav-collapse">
+            <ul class="nav">
+              <li><a href="/categories.html">Categories</a></li>
+              <li><a href="/archive.html">Archive</a></li>
+              <li><a href="/about.html">About</a></li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+      <div class="content">
+        
+<div class="page-header">
+  <h1>R for Environmental and Resource Economists </h1>
+</div>
+
+<div class="row">
+  <div class="span12">
+    
+   <!-- here add you post markup -->
+   <h1><a href="/r/spatial/2015/08/08/buffer">Identifying spatial points within a Buffer of spatial objects</a></h1>
+   <p class="author">
+    <span class="date">2015-08-08</span>
+  </p>
+  <div class="content">
+    <!-- -->
+
+<hr />
+
+<p>Spatial discontinuity sometimes allows for a clean impact evaluation. For example, Balck (1999) made use of the fact that school districts strictly determine which school kids may enter to evaluate the value of school quality, reflected on the housing price.
+Housing prices are heavily dependent on spatial heterogeneous characteristics, such as, crime rate and the distance to a park, etc. One way to control for these spatial variables that are sometimes unobservables (thus often cause omitted variable bias) is to compare houses that are very close to the border that separates one side from the other. In this post, I will show you how to identify spatial observation units (in this example, they are irrigation wells in Nebraska) that are within the buffer around such a border.</p>
+
+<p>First, let’s load packages we are going to use in this session.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r"><span class="kn">library</span><span class="p">(</span>rgdal<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>data.table<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>dplyr<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>ggplot2<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>rgeos<span class="p">)</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Let’s now import a data set of wells located within the Upper and Middle Republican Natural Resources Districts (URNRD and MRNRD, respectively).</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">wells <span class="o">&lt;-</span> fread<span class="p">(</span><span class="s">&#39;wells_urmr.csv&#39;</span><span class="p">)</span></code></pre></div>
+
+<p><br /></p>
+
+<p>We also import a shape file of county boundaries for Nebraska and then subset it to have only Chase, Dundy, Perkins, Lincoln, Hayes, and Hitchcock County. We then give a status of “urnrd” to wells located within either one of Chase, Dundy, and Perkins County and “mrnrd” to the rest.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">NE_county <span class="o">&lt;-</span> readOGR<span class="p">(</span>dsn <span class="o">=</span> <span class="s">&quot;.&quot;</span><span class="p">,</span> <span class="s">&quot;county_bound&quot;</span><span class="p">)</span></code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## OGR data source with driver: ESRI Shapefile 
+## Source: &quot;.&quot;, layer: &quot;county_bound&quot;
+## with 93 features
+## It has 26 fields</code></pre></div>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">um_county <span class="o">&lt;-</span> NE_county<span class="p">[</span>NE_county<span class="o">@</span>data<span class="o">$</span>COUNTY_NAM <span class="o">%in%</span> <span class="kt">c</span><span class="p">(</span><span class="s">&#39;CHASE&#39;</span><span class="p">,</span> <span class="s">&#39;DUNDY&#39;</span><span class="p">,</span> <span class="s">&#39;PERKINS&#39;</span><span class="p">,</span><span class="s">&#39;LINCOLN&#39;</span><span class="p">,</span> <span class="s">&#39;HAYES&#39;</span><span class="p">,</span> <span class="s">&#39;HITCHCOCK&#39;</span><span class="p">),]</span>
+um_county<span class="o">@</span>data<span class="o">$</span>nrd <span class="o">&lt;-</span> <span class="s">&#39;mrnrd&#39;</span>
+um_county<span class="o">@</span>data<span class="p">[</span>um_county<span class="o">@</span>data<span class="o">$</span>COUNTY_NAM <span class="o">%in%</span> <span class="kt">c</span><span class="p">(</span><span class="s">&#39;CHASE&#39;</span><span class="p">,</span> <span class="s">&#39;DUNDY&#39;</span><span class="p">,</span> <span class="s">&#39;PERKINS&#39;</span><span class="p">),</span><span class="s">&#39;nrd&#39;</span><span class="p">]</span> <span class="o">&lt;-</span> <span class="s">&#39;urnrd&#39;</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Here is the map of wells:</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">um_county_f <span class="o">&lt;-</span> fortify<span class="p">(</span>um_county<span class="p">,</span>region <span class="o">=</span> <span class="s">&quot;COUNTY_NAM&quot;</span><span class="p">)</span> <span class="o">%&gt;%</span> data.table<span class="p">()</span>
+g_wells <span class="o">&lt;-</span> ggplot<span class="p">(</span>data<span class="o">=</span>wells<span class="p">,</span>aes<span class="p">(</span>x<span class="o">=</span>long<span class="p">,</span>y<span class="o">=</span>lat<span class="p">))</span> <span class="o">+</span> 
+	geom_point<span class="p">(</span>colour<span class="o">=</span><span class="s">&#39;orange&#39;</span><span class="p">,</span>size<span class="o">=</span><span class="m">0.7</span><span class="p">)</span> <span class="o">+</span>
+	coord_equal<span class="p">(</span>ratio<span class="o">=</span><span class="m">1</span><span class="p">)</span> <span class="o">+</span>
+  	labs<span class="p">(</span>x<span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">,</span> y<span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="c1">#labels</span>
+  	theme<span class="p">(</span>
+  		axis.ticks.y <span class="o">=</span> element_blank<span class="p">(),</span>
+  		axis.text.y <span class="o">=</span> element_blank<span class="p">(),</span> <span class="c1"># get rid of x ticks/text</span>
+  		axis.ticks.x <span class="o">=</span> element_blank<span class="p">(),</span>
+  		axis.text.x <span class="o">=</span> element_blank<span class="p">(),</span>
+  		panel.background <span class="o">=</span> element_rect<span class="p">(</span>fill<span class="o">=</span><span class="s">&#39;white&#39;</span><span class="p">)</span>
+  	<span class="p">)</span>
+
+g_with_bound <span class="o">&lt;-</span> g_wells <span class="o">+</span> 
+	geom_polygon<span class="p">(</span>data<span class="o">=</span>um_county_f<span class="p">,</span>aes<span class="p">(</span>x<span class="o">=</span>long<span class="p">,</span>y<span class="o">=</span>lat<span class="p">,</span>group<span class="o">=</span>group<span class="p">),</span>fill<span class="o">=</span><span class="kc">NA</span><span class="p">,</span>colour<span class="o">=</span><span class="s">&quot;black&quot;</span><span class="p">,</span>size<span class="o">=</span><span class="m">0.5</span><span class="p">)</span> 
+
+g_with_bound</code></pre></div>
+
+<p><img src="/images/buffer-worldmap-1.png" alt="plot of chunk worldmap" /></p>
+
+<p><br /></p>
+
+<p>The objective here is to find wells that are close to the border that separates URNRD and MRNRD, which is the vertical (almost) line that separates all the counties into 3 to the west and 3 to the east. Since we are not interested in the horizontal borders, let’s dissolve the URNRD and MRNRD counties individually using the <strong>gUnaryUnion( )</strong> function from the <strong>rgeos</strong> package.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">u_to_m <span class="o">&lt;-</span> gUnaryUnion<span class="p">(</span>um_county<span class="p">,</span> um_county<span class="o">@</span>data<span class="o">$</span>nrd<span class="p">)</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Now the map looks like this:</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">u_to_m_f <span class="o">&lt;-</span> fortify<span class="p">(</span>u_to_m<span class="p">,</span>region<span class="o">=</span><span class="s">&#39;nrd&#39;</span><span class="p">)</span>
+g_with_dis <span class="o">&lt;-</span> g_wells <span class="o">+</span>
+	geom_polygon<span class="p">(</span>data<span class="o">=</span>u_to_m_f<span class="p">,</span>aes<span class="p">(</span>x<span class="o">=</span>long<span class="p">,</span>y<span class="o">=</span>lat<span class="p">,</span>group<span class="o">=</span>group<span class="p">),</span>fill<span class="o">=</span><span class="kc">NA</span><span class="p">,</span>colour<span class="o">=</span><span class="s">&quot;black&quot;</span><span class="p">)</span>
+g_with_dis</code></pre></div>
+
+<p><img src="/images/buffer-show1-1.png" alt="plot of chunk show1" /></p>
+
+<p><br /></p>
+
+<p>Now, let’s create buffers around the borders using the <strong>gBuffer( )</strong> function from the <strong>rgeos</strong> package. You can see the red lines that are off by “20000” from the border of URNRD and MRNRD.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">buf_nrd <span class="o">&lt;-</span> gBuffer<span class="p">(</span>u_to_m<span class="p">,</span>width<span class="o">=</span><span class="m">20000</span><span class="p">,</span>byid<span class="o">=</span><span class="kc">TRUE</span><span class="p">)</span>
+plot<span class="p">(</span>buf_nrd<span class="p">,</span> border <span class="o">=</span> <span class="s">&quot;red&quot;</span><span class="p">)</span>
+plot<span class="p">(</span>u_to_m<span class="p">,</span> add <span class="o">=</span> <span class="kc">TRUE</span><span class="p">)</span></code></pre></div>
+
+<p><img src="/images/buffer-buffer-1.png" alt="plot of chunk buffer" /> 
+<br /></p>
+
+<p>Finding the intersection of the two buffers (red-shaded region) using <strong>gIntersection( )</strong> gives us almost what we want.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">buf_int <span class="o">&lt;-</span> gIntersection<span class="p">(</span>buf_nrd<span class="p">[</span><span class="m">1</span><span class="p">,</span> <span class="p">],</span> buf_nrd<span class="p">[</span><span class="m">2</span><span class="p">,</span> <span class="p">])</span> 
+plot<span class="p">(</span>buf_nrd<span class="p">,</span> border <span class="o">=</span> <span class="s">&quot;red&quot;</span><span class="p">)</span>
+plot<span class="p">(</span>u_to_m<span class="p">,</span> add <span class="o">=</span> <span class="kc">TRUE</span><span class="p">)</span>
+plot<span class="p">(</span>buf_int<span class="p">,</span> add <span class="o">=</span> <span class="kc">TRUE</span><span class="p">,</span> col <span class="o">=</span> <span class="s">&quot;#FF000080&quot;</span><span class="p">)</span></code></pre></div>
+
+<p><img src="/images/buffer-buffer_int-1.png" alt="plot of chunk buffer_int" /></p>
+
+<p><br /></p>
+
+<p>The problem is of course that the intersection includes area that does not belong to either URNRD or MRNRD. So, let’s cut out those regions.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">buf <span class="o">&lt;-</span> gIntersection<span class="p">(</span>buf_int<span class="p">,</span> gUnaryUnion<span class="p">(</span>u_to_m<span class="p">))</span>
+plot<span class="p">(</span>buf_nrd<span class="p">,</span> border <span class="o">=</span> <span class="s">&quot;red&quot;</span><span class="p">)</span>
+plot<span class="p">(</span>u_to_m<span class="p">,</span> add <span class="o">=</span> <span class="kc">TRUE</span><span class="p">)</span>
+plot<span class="p">(</span>buf<span class="p">,</span> add <span class="o">=</span> <span class="kc">TRUE</span><span class="p">,</span> col <span class="o">=</span> <span class="s">&quot;#FF000080&quot;</span><span class="p">)</span></code></pre></div>
+
+<p><img src="/images/buffer-final-1.png" alt="plot of chunk final" /></p>
+
+<p><br /></p>
+
+<p>Great. So, we’ve successfully created the buffer we want. The next step is to identify spatial points (wells) that are located within the buffer. This can be achieved easily with the <strong>over( )</strong> function.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r"><span class="c1">#--- create a SpatialPointsDataFrame of wells ---#</span>
+wells_spatial <span class="o">&lt;-</span> SpatialPointsDataFrame<span class="p">(</span>coords<span class="o">=</span>wells<span class="p">[,</span><span class="kt">list</span><span class="p">(</span>long<span class="p">,</span>lat<span class="p">)],</span> data<span class="o">=</span>wells<span class="p">)</span>
+
+<span class="c1">#--- same projection scheme ---#</span>
+proj4string<span class="p">(</span>wells_spatial<span class="p">)</span> <span class="o">&lt;-</span> buf<span class="o">@</span>proj4string
+
+<span class="c1">#--- which wells in the buffer? ---#</span>
+within <span class="o">&lt;-</span> over<span class="p">(</span>wells_spatial<span class="p">,</span>buf<span class="p">)</span>
+id_within <span class="o">&lt;-</span> <span class="kp">cbind</span><span class="p">(</span>wells<span class="p">[,</span><span class="kt">list</span><span class="p">(</span>id<span class="p">)],</span><span class="kp">within</span><span class="p">)[</span><span class="o">!</span><span class="kp">is.na</span><span class="p">(</span><span class="kp">within</span><span class="p">),</span>id<span class="p">]</span> 
+
+<span class="c1">#--- select wells that are within the buffer ---#</span>
+wells_within <span class="o">&lt;-</span> wells<span class="p">[</span>id <span class="o">%in%</span> id_within<span class="p">,]</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Let’s confirm if what we’ve done is correct by looking at a map:</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">buf_f <span class="o">&lt;-</span> fortify<span class="p">(</span>buf<span class="p">)</span> <span class="o">%&gt;%</span> data.table<span class="p">()</span>
+g_with_bound <span class="o">+</span>
+	geom_polygon<span class="p">(</span>data<span class="o">=</span>buf_f<span class="p">,</span>aes<span class="p">(</span>x<span class="o">=</span>long<span class="p">,</span>y<span class="o">=</span>lat<span class="p">,</span>group<span class="o">=</span>group<span class="p">),</span>fill<span class="o">=</span><span class="s">&quot;#FF000080&quot;</span><span class="p">,</span>alpha<span class="o">=</span><span class="m">0.4</span><span class="p">)</span> <span class="o">+</span>
+	geom_point<span class="p">(</span>data<span class="o">=</span>wells_within<span class="p">,</span>aes<span class="p">(</span>x<span class="o">=</span>long<span class="p">,</span>y<span class="o">=</span>lat<span class="p">),</span>colour<span class="o">=</span><span class="s">&#39;blue&#39;</span><span class="p">,</span>size<span class="o">=</span><span class="m">0.7</span><span class="p">)</span></code></pre></div>
+
+<p><img src="/images/buffer-final_map-1.png" alt="plot of chunk final_map" /></p>
+
+<p>Looking good. This is it for this post. Enjoy!</p>
+
+<p><br />
+<br /></p>
+
+<h3 id="session-information">Session Information</h3>
+
+<hr />
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## R version 3.2.0 (2015-04-16)
+## Platform: x86_64-apple-darwin13.4.0 (64-bit)
+## Running under: OS X 10.10 (Yosemite)
+## 
+## locale:
+## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+## 
+## attached base packages:
+## [1] methods   stats     graphics  grDevices utils     datasets  base     
+## 
+## other attached packages:
+## [1] maptools_0.8-36  rgeos_0.3-11     ggplot2_1.0.1    dplyr_0.4.2     
+## [5] data.table_1.9.4 rgdal_1.0-4      sp_1.1-1         knitr_1.10.5    
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-43      munsell_0.4.2   
+##  [5] colorspace_1.2-6 lattice_0.20-33  R6_2.1.0         stringr_1.0.0   
+##  [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+## [13] gtable_0.1.2     DBI_0.3.1        assertthat_0.1   digest_0.6.8    
+## [17] reshape2_1.4.1   formatR_1.2      evaluate_0.7     labeling_0.3    
+## [21] stringi_0.5-5    scales_0.2.5     foreign_0.8-65   chron_2.3-47    
+## [25] proto_0.3-10</code></pre></div>
+
+<p><br />
+<br /></p>
+
+<h3 id="references">References</h3>
+
+<hr />
+
+<p><span id="black99">Black, S. E. (1999). Do better schools matter? Parental valuation of elementary education. <i>Quarterly Journal of Economics</i>, 577–599.</span></p>
+
+
+  </div>
+
+
+<!-- Pagination links -->
+<div class="pagination pagination-centered">
+  <ul>
+  
+    
+      <li class="prev"><a href="/" title="Previous page">Prev</a></li>
+    
+  
+  
+    <li class="next disabled"><a>Next</a>
+  
+  </ul>
+</div>
+
+  </div>
+</div>
+
+
+      </div>
+
+      <footer>
+      </footer>
+
+    </div> <!-- /container -->
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script>window.jQuery || document.write('<script src="/assets/themes/twitter-2.0/js/jquery.min.js"><\/script>')</script>
+    <script src="/assets/themes/twitter-2.0/js/bootstrap.min.js"></script>
+    
+  </body>
+</html>
+

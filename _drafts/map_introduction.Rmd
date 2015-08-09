@@ -1,0 +1,157 @@
+---
+layout: post
+title: Mapping point data on polygons using ggplot2( )
+tags: [R, spatial, ggplot2, grid, over]
+categories: [R, spatial]
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+{% include JB/setup %} 
+ 
+---------------
+
+In this post, I will show how to make a map of spatial points data (irrigation wells) overlayed on spatial polygons (counties in Nebraska) using __ggplot( )__. You will learn:
+
+* how to transform a SpatialPolygonDataFrame into a data frame that is compatible with __ggplot( )__ for mapping using the __fortify( )__ function from the __ggplot2__ package
+
+* change the coordinate reference system (CRS) using **spTransform( )** from the **sp** package.
+    
+* create a map of points data overlayed on spatial polygons.
+
+Let's first load packages we are going to use in this session.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(rgdal)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(raster)
+```
+
+```{r gpc, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
+library(maptools)
+gpclibPermit()
+```
+
+
+```{r library, echo=FALSE, message=FALSE}
+library(knitr)
+opts_knit$set(root.dir = '~/Dropbox/tmieno2.github.com/data')
+opts_chunk$set(fig.path='{{ site.url }}/images/spatial_map-',dpi=300)
+```
+
+<br />
+
+We now import a Nebraska county shape file and select Chase, Dundy, and Perkins counties.
+
+```{r read, results="hide"}
+NE_county <- readOGR(dsn = ".", "county_bound")
+urnrd <- NE_county[NE_county@data$COUNTY_NAM %in% c("CHASE","DUNDY","PERKINS"),]
+```
+
+<br />
+
+Unfortunately, a SpatialPolygonDataFrame cannot be used immediately for mapping using **ggplot( )**. The ggplot2 package, however, offers a function called **fortify( )**, which transforms a SpatialPolygonDataFrame into a data frame that is compatible with mapping using **ggplot( )**.
+
+```{r fortify, message=FALSE, warning=FALSE}
+urnrd_f <- fortify(urnrd, region = "COUNTY_NAM")
+head(urnrd_f)
+```
+
+<br />
+
+Now, you may have noticed that in the urnrd_f dataset, variables long and lat have values that cannot possibly be right as valid longitude and latitude. This is because the original shape file of Nebraska counties uses a different geographical representation of locations than longitude and latitude. You can see this by using **proj4string( )** function.
+
+```{r proj}
+proj4string(urnrd)
+```
+
+<br />
+
+It turns out the Lambert conformal conic (lcc) projection method is used in this dataset as you can see from "+proj=lcc" in the output. On the other hand, the location of irrigation wells is represented simply by longitude and latitude, unprojected.
+
+```{r wells, message=FALSE, warning=FALSE}
+wells <- fread('fake_wells.csv')
+wells
+```
+
+<br />
+
+As you can imagine, in order for **ggplot( )** to correctly map both  counties and wells on a single map, they should have the same coordinate reference system (CRS). To do this, let's first transform the well data into a SpatialPointsDataFrame by using the **coordinates( )** function.
+
+```{r spdf}
+coordinates(wells) <- c('long','lat')
+proj4string(wells)
+```
+
+<br />
+
+As you can see above, the CRS has not been declared for the wells data at this point. So, let's define one for the wells.
+
+```{r prj_well}
+proj4string(wells) <-  CRS("+proj=longlat")
+```
+
+<br />
+
+Now, we can use **spTransform( )** to change the CRS of wells to that of urnrd_f. 
+
+```{r lcc}
+wells_lcc <- spTransform(wells, urnrd@proj4string)
+wells_lcc
+```
+
+<br />
+
+You can see that wells now have the same CRS as county boundaries. As we only want a data frame of coordinates for mapping instead of a SpatialPointsDataFrame,
+
+```{r tomap}
+wells_to_map <- wells_lcc@coords %>% data.table()
+```
+
+<br />
+
+With all the data at our fingertips, let's create a map! Here is the map of selected counties in Nebraska.
+
+```{r county}
+map <- ggplot(urnrd_f, aes(long, lat)) + 
+ geom_polygon(aes(group=group),fill="#D3D3D3",colour="black",size=0.2) +
+ coord_equal(ratio=1) +
+ labs(x="", y="") +
+ theme(
+ 	axis.ticks.y = element_blank(),
+ 	axis.text.y = element_blank(), 
+ 	axis.ticks.x = element_blank(),
+ 	axis.text.x = element_blank(),
+ 	panel.background = element_rect(fill='white')
+ 	)
+```
+
+```{r, echo=FALSE}
+map
+```
+
+<br />
+
+Now, let's add wells onto this map.
+
+```{r both}
+map <- map + 
+	geom_point(data=wells_to_map,aes(x=long,y=lat),size=0.7)
+```
+
+```{r disp, echo=FALSE}
+map
+```
+
+<br />
+<br />
+
+### Session Information
+
+---------------
+
+```{r, echo=FALSE}
+sessionInfo()
+```
+
+

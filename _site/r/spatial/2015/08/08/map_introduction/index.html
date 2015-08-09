@@ -1,0 +1,317 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Mapping point data on polygons using gplot2( )</title>
+    
+    <meta name="author" content="Taro Mieno">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+    <link rel="alternate" type="application/atom+xml" title="R Entries" href="/atom.xml" />
+
+    <!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <!-- Le styles -->
+    <link href="/assets/themes/twitter-2.0/css/bootstrap.min.css" rel="stylesheet">
+    <style type="text/css" media="screen">
+      body {
+        padding-top: 60px; /* 60px to make the container go all the way to the bottom of the topbar */
+      }
+    </style>
+    <link href="/assets/themes/twitter-2.0/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/assets/themes/twitter-2.0/css/style.css?body=1" rel="stylesheet" type="text/css" media="all">
+    <link href="/assets/themes/twitter-2.0/css/syntax.css" rel="stylesheet" type="text/css">
+
+    <!-- Le fav and touch icons -->
+    <link rel="shortcut icon" href="/figs/favicon.ico">
+  <!-- Update these with your own images
+    <link rel="apple-touch-icon" href="/figs/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/figs/apple-touch-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/figs/apple-touch-icon-114x114.png">
+  -->
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </a>
+          <a class="brand" href="/">Taro Mieno</a>
+          <div class="nav-collapse">
+            <ul class="nav">
+              <li><a href="/categories.html">Categories</a></li>
+              <li><a href="/archive.html">Archive</a></li>
+              <li><a href="/about.html">About</a></li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+      <div class="content">
+        
+<div class="page-header">
+  <h1>Mapping point data on polygons using gplot2( )</h1>
+  <div class="date"><b>Published:</b> 2015-08-08</div>
+  
+    <ul class="tag_box inline">
+      
+      
+
+
+  
+     
+    	<li><a href="/tags.html#R-ref">R <span>4</span></a></li>
+     
+    	<li><a href="/tags.html#spatial-ref">spatial <span>4</span></a></li>
+     
+    	<li><a href="/tags.html#ggplot2-ref">ggplot2 <span>4</span></a></li>
+     
+    	<li><a href="/tags.html#grid-ref">grid <span>3</span></a></li>
+     
+    	<li><a href="/tags.html#over-ref">over <span>3</span></a></li>
+    
+  
+
+
+
+    </ul>
+  
+</div>
+
+<div class="row">
+  <div class="span12">
+    
+<hr />
+
+<p>In this post, I will show how to make a map of spatial points data (irrigation wells) overlayed on spatial polygons (counties in Nebraska) using <strong>ggplot( )</strong>. You will learn:</p>
+
+<ul>
+  <li>
+    <p>how to transform a SpatialPolygonDataFrame into a data frame that is compatible with <strong>ggplot( )</strong> for mapping using the <strong>fortify( )</strong> function from the <strong>ggplot2</strong> package</p>
+  </li>
+  <li>
+    <p>change the coordinate reference system (CRS) using <strong>spTransform( )</strong> from the <strong>sp</strong> package.</p>
+  </li>
+  <li>
+    <p>create a map of points data overlayed on spatial polygons.</p>
+  </li>
+</ul>
+
+<p>Let’s first load packages we are going to use in this session.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r"><span class="kn">library</span><span class="p">(</span>rgdal<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>data.table<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>dplyr<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>ggplot2<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>raster<span class="p">)</span></code></pre></div>
+
+<p><br /></p>
+
+<p>We now import a Nebraska county shape file and select Chase, Dundy, and Perkins counties.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">NE_county <span class="o">&lt;-</span> readOGR<span class="p">(</span>dsn <span class="o">=</span> <span class="s">&quot;.&quot;</span><span class="p">,</span> <span class="s">&quot;county_bound&quot;</span><span class="p">)</span>
+urnrd <span class="o">&lt;-</span> NE_county<span class="p">[</span>NE_county<span class="o">@</span>data<span class="o">$</span>COUNTY_NAM <span class="o">%in%</span> <span class="kt">c</span><span class="p">(</span><span class="s">&quot;CHASE&quot;</span><span class="p">,</span><span class="s">&quot;DUNDY&quot;</span><span class="p">,</span><span class="s">&quot;PERKINS&quot;</span><span class="p">),]</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Unfortunately, a SpatialPolygonDataFrame cannot be used immediately for mapping using <strong>ggplot( )</strong>. The ggplot2 package, however, offers a function called <strong>fortify( )</strong>, which transforms a SpatialPolygonDataFrame into a data frame that is compatible with mapping using <strong>ggplot( )</strong>.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">urnrd_f <span class="o">&lt;-</span> fortify<span class="p">(</span>urnrd<span class="p">,</span> region <span class="o">=</span> <span class="s">&quot;COUNTY_NAM&quot;</span><span class="p">)</span>
+<span class="kp">head</span><span class="p">(</span>urnrd_f<span class="p">)</span></code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">##      long      lat order  hole piece   group    id
+## 1 1083135 321605.2     1 FALSE     1 CHASE.1 CHASE
+## 2 1083251 321603.6     2 FALSE     1 CHASE.1 CHASE
+## 3 1083535 321599.5     3 FALSE     1 CHASE.1 CHASE
+## 4 1083555 321599.4     4 FALSE     1 CHASE.1 CHASE
+## 5 1084352 321588.2     5 FALSE     1 CHASE.1 CHASE
+## 6 1084828 321573.1     6 FALSE     1 CHASE.1 CHASE</code></pre></div>
+
+<p><br /></p>
+
+<p>Now, you may have noticed that in the urnrd_f dataset, variables long and lat have values that cannot possibly be right as valid longitude and latitude. This is because the original shape file of Nebraska counties uses a different geographical representation of locations than longitude and latitude. You can see this by using <strong>proj4string( )</strong> function.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">proj4string<span class="p">(</span>urnrd<span class="p">)</span></code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## [1] &quot;+proj=lcc +lat_1=40 +lat_2=43 +lat_0=39.83333333333334 +lon_0=-100 +x_0=500000.0000000001 +y_0=0 +datum=NAD83 +units=us-ft +no_defs +ellps=GRS80 +towgs84=0,0,0&quot;</code></pre></div>
+
+<p><br /></p>
+
+<p>It turns out the Lambert conformal conic (lcc) projection method is used in this dataset as you can see from “+proj=lcc” in the output. On the other hand, the location of irrigation wells is represented simply by longitude and latitude, unprojected.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">wells <span class="o">&lt;-</span> fread<span class="p">(</span><span class="s">&#39;fake_wells.csv&#39;</span><span class="p">)</span>
+wells</code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">##            lat      long      gpm
+##    1: 40.54449 -101.8650 817.9014
+##    2: 40.49558 -101.3700 953.2952
+##    3: 40.47911 -101.9014 934.3472
+##    4: 40.61308 -101.9029 752.5348
+##    5: 40.38938 -101.9422 856.6183
+##   ---                            
+## 2918: 40.87906 -101.9236 692.4241
+## 2919: 40.55861 -101.7935 687.3473
+## 2920: 40.80561 -101.5178 603.0804
+## 2921: 40.32196 -101.6708 745.0353
+## 2922: 40.09223 -101.4382 236.5328</code></pre></div>
+
+<p><br /></p>
+
+<p>As you can imagine, in order for <strong>ggplot( )</strong> to correctly map both  counties and wells on a single map, they should have the same coordinate reference system (CRS). To do this, let’s first transform the well data into a SpatialPointsDataFrame by using the <strong>coordinates( )</strong> function.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">coordinates<span class="p">(</span>wells<span class="p">)</span> <span class="o">&lt;-</span> <span class="kt">c</span><span class="p">(</span><span class="s">&#39;long&#39;</span><span class="p">,</span><span class="s">&#39;lat&#39;</span><span class="p">)</span>
+proj4string<span class="p">(</span>wells<span class="p">)</span></code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## [1] NA</code></pre></div>
+
+<p><br /></p>
+
+<p>As you can see above, the CRS has not been declared for the wells data at this point. So, let’s define one for the wells.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">proj4string<span class="p">(</span>wells<span class="p">)</span> <span class="o">&lt;-</span>  CRS<span class="p">(</span><span class="s">&quot;+proj=longlat&quot;</span><span class="p">)</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Now, we can use <strong>spTransform( )</strong> to change the CRS of wells to that of urnrd_f.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">wells_lcc <span class="o">&lt;-</span> spTransform<span class="p">(</span>wells<span class="p">,</span> urnrd<span class="o">@</span>proj4string<span class="p">)</span>
+wells_lcc</code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## class       : SpatialPointsDataFrame 
+## features    : 2922 
+## extent      : 1067358, 1295641, 66445.43, 431259.7  (xmin, xmax, ymin, ymax)
+## coord. ref. : +proj=lcc +lat_1=40 +lat_2=43 +lat_0=39.83333333333334 +lon_0=-100 +x_0=500000.0000000001 +y_0=0 +datum=NAD83 +units=us-ft +no_defs +ellps=GRS80 +towgs84=0,0,0 
+## variables   : 1
+## names       :              gpm 
+## min values  :                0 
+## max values  : 1378.17256086539</code></pre></div>
+
+<p><br /></p>
+
+<p>You can see that wells now have the same CRS as county boundaries. As we only want a data frame of coordinates for mapping instead of a SpatialPointsDataFrame,</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">wells_to_map <span class="o">&lt;-</span> wells_lcc<span class="o">@</span>coords <span class="o">%&gt;%</span> data.table<span class="p">()</span></code></pre></div>
+
+<p><br /></p>
+
+<p>With all the data at our fingertips, let’s create a map! Here is the map of selected counties in Nebraska.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">map <span class="o">&lt;-</span> ggplot<span class="p">(</span>urnrd_f<span class="p">,</span> aes<span class="p">(</span>long<span class="p">,</span> lat<span class="p">))</span> <span class="o">+</span> 
+ geom_polygon<span class="p">(</span>aes<span class="p">(</span>group<span class="o">=</span>group<span class="p">),</span>fill<span class="o">=</span><span class="s">&quot;#D3D3D3&quot;</span><span class="p">,</span>colour<span class="o">=</span><span class="s">&quot;black&quot;</span><span class="p">,</span>size<span class="o">=</span><span class="m">0.2</span><span class="p">)</span> <span class="o">+</span>
+ coord_equal<span class="p">(</span>ratio<span class="o">=</span><span class="m">1</span><span class="p">)</span> <span class="o">+</span>
+ labs<span class="p">(</span>x<span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">,</span> y<span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">)</span> <span class="o">+</span>
+ theme<span class="p">(</span>
+ 	axis.ticks.y <span class="o">=</span> element_blank<span class="p">(),</span>
+ 	axis.text.y <span class="o">=</span> element_blank<span class="p">(),</span> 
+ 	axis.ticks.x <span class="o">=</span> element_blank<span class="p">(),</span>
+ 	axis.text.x <span class="o">=</span> element_blank<span class="p">(),</span>
+ 	panel.background <span class="o">=</span> element_rect<span class="p">(</span>fill<span class="o">=</span><span class="s">&#39;white&#39;</span><span class="p">)</span>
+ 	<span class="p">)</span></code></pre></div>
+
+<p><img src="/images/spatial_map-unnamed-chunk-1-1.png" alt="plot of chunk unnamed-chunk-1" /></p>
+
+<p><br /></p>
+
+<p>Now, let’s add wells onto this map.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">map <span class="o">&lt;-</span> map <span class="o">+</span> 
+	geom_point<span class="p">(</span>data<span class="o">=</span>wells_to_map<span class="p">,</span>aes<span class="p">(</span>x<span class="o">=</span>long<span class="p">,</span>y<span class="o">=</span>lat<span class="p">),</span>size<span class="o">=</span><span class="m">0.7</span><span class="p">)</span></code></pre></div>
+
+<p><img src="/images/spatial_map-disp-1.png" alt="plot of chunk disp" /></p>
+
+<p><br />
+<br /></p>
+
+<h3 id="session-information">Session Information</h3>
+
+<hr />
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## R version 3.2.0 (2015-04-16)
+## Platform: x86_64-apple-darwin13.4.0 (64-bit)
+## Running under: OS X 10.10 (Yosemite)
+## 
+## locale:
+## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+## 
+## attached base packages:
+## [1] methods   stats     graphics  grDevices utils     datasets  base     
+## 
+## other attached packages:
+## [1] maptools_0.8-36  raster_2.4-15    ggplot2_1.0.1    dplyr_0.4.2     
+## [5] data.table_1.9.4 rgdal_1.0-4      sp_1.1-1         knitr_1.10.5    
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-43      munsell_0.4.2   
+##  [5] colorspace_1.2-6 lattice_0.20-33  R6_2.1.0         stringr_1.0.0   
+##  [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+## [13] gtable_0.1.2     DBI_0.3.1        rgeos_0.3-11     assertthat_0.1  
+## [17] digest_0.6.8     reshape2_1.4.1   formatR_1.2      evaluate_0.7    
+## [21] labeling_0.3     stringi_0.5-5    scales_0.2.5     foreign_0.8-65  
+## [25] chron_2.3-47     proto_0.3-10</code></pre></div>
+
+
+    <hr>
+    <div class="pagination pagination-centered">
+      <ul>
+      
+        <li class="prev"><a href="/r/spatial/2015/08/08/heatmap" title="Creating a Heat Map using **ggplot2**">Prev</a></li>
+      
+      
+        <li class="next"><a href="/r/spatial/2015/08/08/square_grid" title="Creating square grid dummy variables for regression analysis">Next</a></li>
+      
+      </ul>
+    </div>
+  </div>
+</div>
+
+<ul>
+  
+
+
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_developer = 1;
+    var disqus_shortname = 'khalo'; // required: replace example with your forum shortname
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">blog comments powered by <span class="logo-disqus">Disqus</span></a>
+
+
+
+
+</ul>
+
+
+      </div>
+
+      <footer>
+      </footer>
+
+    </div> <!-- /container -->
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script>window.jQuery || document.write('<script src="/assets/themes/twitter-2.0/js/jquery.min.js"><\/script>')</script>
+    <script src="/assets/themes/twitter-2.0/js/bootstrap.min.js"></script>
+    
+  </body>
+</html>
+

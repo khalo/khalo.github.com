@@ -1,0 +1,316 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Creating square grid dummy variables for regression analysis</title>
+    
+    <meta name="author" content="Taro Mieno">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+    <link rel="alternate" type="application/atom+xml" title="R Entries" href="/atom.xml" />
+
+    <!-- Le HTML5 shim, for IE6-8 support of HTML elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <!-- Le styles -->
+    <link href="/assets/themes/twitter-2.0/css/bootstrap.min.css" rel="stylesheet">
+    <style type="text/css" media="screen">
+      body {
+        padding-top: 60px; /* 60px to make the container go all the way to the bottom of the topbar */
+      }
+    </style>
+    <link href="/assets/themes/twitter-2.0/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/assets/themes/twitter-2.0/css/style.css?body=1" rel="stylesheet" type="text/css" media="all">
+    <link href="/assets/themes/twitter-2.0/css/syntax.css" rel="stylesheet" type="text/css">
+
+    <!-- Le fav and touch icons -->
+    <link rel="shortcut icon" href="/figs/favicon.ico">
+  <!-- Update these with your own images
+    <link rel="apple-touch-icon" href="/figs/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/figs/apple-touch-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/figs/apple-touch-icon-114x114.png">
+  -->
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </a>
+          <a class="brand" href="/">Taro Mieno</a>
+          <div class="nav-collapse">
+            <ul class="nav">
+              <li><a href="/categories.html">Categories</a></li>
+              <li><a href="/archive.html">Archive</a></li>
+              <li><a href="/about.html">About</a></li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+
+      <div class="content">
+        
+<div class="page-header">
+  <h1>Creating square grid dummy variables for regression analysis</h1>
+  <div class="date"><b>Published:</b> 2015-08-08</div>
+  
+    <ul class="tag_box inline">
+      
+      
+
+
+  
+     
+    	<li><a href="/tags.html#R-ref">R <span>4</span></a></li>
+     
+    	<li><a href="/tags.html#spatial-ref">spatial <span>4</span></a></li>
+     
+    	<li><a href="/tags.html#ggplot2-ref">ggplot2 <span>4</span></a></li>
+     
+    	<li><a href="/tags.html#grid-ref">grid <span>3</span></a></li>
+     
+    	<li><a href="/tags.html#over-ref">over <span>3</span></a></li>
+    
+  
+
+
+
+    </ul>
+  
+</div>
+
+<div class="row">
+  <div class="span12">
+    <!-- -->
+
+<hr />
+
+<p>In the course of my work on the estimation of the impacts of brownfields cleanup on housing prices in NY, I used 0.25- by 0.25-mile square grid fixed effects, which have a tighter control on unobservable neighbor characteristics than census tract fixed effects. The use of square grid fixed effects originate from Linn (2013). In this post, I will show you how I created the square grid dummy variables. Specifically, we’ll learn to:</p>
+
+<ol>
+  <li>Create a raster layer consisting of square grids that covers five counties in NY: Bronx, Queens, Kings, New York, and Richmond.
+    <ul>
+      <li>identify how many miles one latitude and longitude degrees are, respectively</li>
+      <li>identify the bounding box</li>
+      <li>identify the number of rows and columns of the final layer</li>
+      <li>create a SpatialGridDataFrame from scratch based on the information from the previous steps</li>
+    </ul>
+  </li>
+  <li>Overlay point data (property locations) on the grids to identify which property belongs to which grid.</li>
+</ol>
+
+<p>Let’s first load the packages we are going to use in this session.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r"><span class="kn">library</span><span class="p">(</span>knitr<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>rgdal<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>data.table<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>dplyr<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>ggplot2<span class="p">)</span>
+<span class="kn">library</span><span class="p">(</span>raster<span class="p">)</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Now, we need to know the geographic extent of the three states in order to see how many miles one latitude and longitude degrees are, respectively. One latitude degree is similar in distance from the south to north end of the globe and is equivalent to 69 miles more or less. On the other hand, one latitude degree means a very different distance depending on where you are. One longitude degree is the longest at the equator and is about 69 miles. However, as you go farther away from the equator, one longitude degree means a smaller distance. So, if we would like to create square grids, we need to know the conversion rate at the geographic extent of our interest. You can find this information <a href="http://www.csgnetwork.com/degreelenllavcalc.html">here</a>. At latitude of 41, 1 latitude degree = 69.01 miles and 1 longitude degree = 52.28 miles. As we would like to create 0.25- by 0.25-mile square grids, the step sizes (distance between the centroids of adjacent grids) are the following:</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">lat_step_size <span class="o">&lt;-</span>	<span class="m">1</span><span class="o">/</span><span class="m">69.01</span><span class="o">/</span><span class="m">4</span>
+lon_step_size <span class="o">&lt;-</span>	<span class="m">1</span><span class="o">/</span><span class="m">52.28</span><span class="o">/</span><span class="m">4</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Now, let’s import a NY county shape file (can be downloaded from <a href="http://www.arcgis.com/home/item.html?id=7f4850fb7d18496ca6925f209d2d1275">here</a>) using <strong>readOGR( )</strong> that comes with the <strong>rgdal</strong> package.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">ny_state <span class="o">&lt;-</span> readOGR<span class="p">(</span>dsn <span class="o">=</span> <span class="s">&quot;.&quot;</span><span class="p">,</span> <span class="s">&quot;NY_counties_clip&quot;</span><span class="p">)</span></code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## OGR data source with driver: ESRI Shapefile 
+## Source: &quot;.&quot;, layer: &quot;NY_counties_clip&quot;
+## with 62 features
+## It has 20 fields</code></pre></div>
+
+<p><br /></p>
+
+<p>We then generate a subset of the SpatialPolygonDataFrame to contain only Bronx, Queens, Kings, New York, and Richmond counties.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">counties <span class="o">&lt;-</span> ny_state<span class="p">[</span>ny_state<span class="o">@</span>data<span class="o">$</span>NAME <span class="o">%in%</span> <span class="kt">c</span><span class="p">(</span><span class="s">&#39;Bronx&#39;</span><span class="p">,</span><span class="s">&#39;Queens&#39;</span><span class="p">,</span><span class="s">&#39;Kings&#39;</span><span class="p">,</span><span class="s">&#39;New York&#39;</span><span class="p">,</span><span class="s">&#39;Richmond&#39;</span><span class="p">),]</span></code></pre></div>
+
+<p><br /></p>
+
+<p>To get the spatial extent of these counties, we can extract this information from the <strong>bbox</strong> slot of <strong>counties</strong>.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">counties<span class="o">@</span>bbox</code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">##         min       max
+## x -74.23694 -73.70027
+## y  40.50600  40.91595</code></pre></div>
+
+<p><br /></p>
+
+<p>Using this information, we define the geographic coordinate of the lower left corner of the gridded layer and its number of rows and columns. We then feed these information into the <strong>GridTopology( )</strong> function to create a SpatialGridDataFrame consisting of 0.25- by 0.25- mile grids.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r"><span class="c1">#--- latitude ---#</span>
+left_lon <span class="o">&lt;-</span> counties<span class="o">@</span>bbox<span class="p">[</span><span class="m">1</span><span class="p">,</span><span class="m">1</span><span class="p">]</span><span class="m">-0.01</span>
+num_col <span class="o">&lt;-</span> <span class="kp">ceiling</span><span class="p">((</span>counties<span class="o">@</span>bbox<span class="p">[</span><span class="m">1</span><span class="p">,</span><span class="m">2</span><span class="p">]</span><span class="o">-</span>left_lon<span class="p">)</span><span class="o">/</span>lat_step_size<span class="p">)</span>
+
+<span class="c1">#--- longitude ---#</span>
+down_lat <span class="o">&lt;-</span> counties<span class="o">@</span>bbox<span class="p">[</span><span class="m">2</span><span class="p">,</span><span class="m">1</span><span class="p">]</span><span class="m">-0.01</span>
+num_row <span class="o">&lt;-</span> <span class="kp">ceiling</span><span class="p">((</span>counties<span class="o">@</span>bbox<span class="p">[</span><span class="m">2</span><span class="p">,</span><span class="m">2</span><span class="p">]</span><span class="o">-</span>down_lat<span class="p">)</span><span class="o">/</span>lon_step_size<span class="p">)</span>
+
+<span class="c1">#--- create SpatialGridDataFrame ---#</span>
+gt <span class="o">&lt;-</span> GridTopology<span class="p">(</span><span class="kt">c</span><span class="p">(</span>left_lon<span class="p">,</span>down_lat<span class="p">),</span><span class="kt">c</span><span class="p">(</span>lon_step_size<span class="p">,</span>lat_step_size<span class="p">),</span><span class="kt">c</span><span class="p">(</span>num_row<span class="p">,</span>num_col<span class="p">))</span>
+spg <span class="o">&lt;-</span> SpatialGrid<span class="p">(</span>gt<span class="p">)</span>
+ny_grids <span class="o">&lt;-</span> SpatialGridDataFrame<span class="p">(</span>spg<span class="p">,</span> data.table<span class="p">(</span>id <span class="o">=</span> <span class="m">1</span><span class="o">:</span><span class="p">(</span>num_col<span class="o">*</span>num_row<span class="p">)))</span></code></pre></div>
+
+<p><br /></p>
+
+<p>Now, let’s import fake property location data that I created. We then use the <strong>coordinates( )</strong> function to transform the data into a SpatialPointsDataFrame.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">prop <span class="o">&lt;-</span> fread<span class="p">(</span><span class="s">&#39;fake_poperty.csv&#39;</span><span class="p">)</span>
+<span class="kp">head</span><span class="p">(</span>prop<span class="p">)</span></code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">##         lat       lon prop_id
+## 1: 40.80627 -73.92422       1
+## 2: 40.80561 -73.92262       2
+## 3: 40.80981 -73.92068       3
+## 4: 40.81193 -73.91994       4
+## 5: 40.81169 -73.91904       5
+## 6: 40.81255 -73.91737       6</code></pre></div>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">coordinates<span class="p">(</span>prop<span class="p">)</span> <span class="o">&lt;-</span> <span class="kt">c</span><span class="p">(</span><span class="s">&#39;lon&#39;</span><span class="p">,</span><span class="s">&#39;lat&#39;</span><span class="p">)</span>
+prop</code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## class       : SpatialPointsDataFrame 
+## features    : 10000 
+## extent      : -74.25467, -73.70042, 40.49932, 40.91101  (xmin, xmax, ymin, ymax)
+## coord. ref. : NA 
+## variables   : 1
+## names       : prop_id 
+## min values  :       1 
+## max values  :   10000</code></pre></div>
+
+<p><br /></p>
+
+<p>To identify which property falls within which grid cell in the gridded layer created above, we use the <strong>over( )</strong> function.</p>
+
+<div class="highlight"><pre><code class="language-r" data-lang="r">which_poly <span class="o">&lt;-</span> over<span class="p">(</span>prop<span class="p">,</span>ny_grids<span class="p">)</span> <span class="o">%&gt;%</span> data.table<span class="p">()</span>
+which_poly <span class="o">&lt;-</span> <span class="kp">cbind</span><span class="p">(</span>prop<span class="o">@</span>data<span class="o">$</span>prop_id<span class="p">,</span>which_poly<span class="p">)</span>
+setnames<span class="p">(</span>which_poly<span class="p">,</span><span class="kp">names</span><span class="p">(</span>which_poly<span class="p">),</span><span class="kt">c</span><span class="p">(</span><span class="s">&#39;pid&#39;</span><span class="p">,</span><span class="s">&#39;grid_id&#39;</span><span class="p">))</span>
+which_poly</code></pre></div>
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">##          pid grid_id
+##     1:     1    5700
+##     2:     2    5789
+##     3:     3    5613
+##     4:     4    5613
+##     5:     5    5614
+##    ---              
+##  9996:  9996    9121
+##  9997:  9997    8603
+##  9998:  9998    8969
+##  9999:  9999    9707
+## 10000: 10000    9893</code></pre></div>
+
+<p><br /></p>
+
+<p>You can see that each property is assigned a unique grid id value. Now you can use this information to create grid dummies or grid-year dummies to implement estimation similar to those done in @linn13.</p>
+
+<p><br />
+<br /></p>
+
+<h2 id="session-information">Session Information</h2>
+
+<hr />
+
+<div class="highlight"><pre><code class="language-text" data-lang="text">## R version 3.2.0 (2015-04-16)
+## Platform: x86_64-apple-darwin13.4.0 (64-bit)
+## Running under: OS X 10.10 (Yosemite)
+## 
+## locale:
+## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+## 
+## attached base packages:
+## [1] methods   stats     graphics  grDevices utils     datasets  base     
+## 
+## other attached packages:
+## [1] raster_2.4-15    ggplot2_1.0.1    dplyr_0.4.2      data.table_1.9.4
+## [5] rgdal_1.0-4      sp_1.1-1         knitr_1.10.5    
+## 
+## loaded via a namespace (and not attached):
+##  [1] Rcpp_0.12.0      magrittr_1.5     MASS_7.3-43      munsell_0.4.2   
+##  [5] colorspace_1.2-6 lattice_0.20-33  R6_2.1.0         stringr_1.0.0   
+##  [9] plyr_1.8.3       tools_3.2.0      parallel_3.2.0   grid_3.2.0      
+## [13] gtable_0.1.2     DBI_0.3.1        assertthat_0.1   digest_0.6.8    
+## [17] reshape2_1.4.1   formatR_1.2      evaluate_0.7     stringi_0.5-5   
+## [21] scales_0.2.5     chron_2.3-47     proto_0.3-10</code></pre></div>
+
+<p><br />
+<br /></p>
+
+<h2 id="references">References</h2>
+
+<hr />
+
+<p><span id="linn13">Linn, J. (2013). The effect of voluntary brownfields programs on nearby property values: Evidence from Illinois. <i>Journal Of Urban Economics</i>, <i>78</i>, 1–18.</span></p>
+
+    <hr>
+    <div class="pagination pagination-centered">
+      <ul>
+      
+        <li class="prev"><a href="/r/spatial/2015/08/08/map_introduction" title="Mapping point data on polygons using gplot2( )">Prev</a></li>
+      
+      
+        <li class="next disabled"><a>Next</a>
+      
+      </ul>
+    </div>
+  </div>
+</div>
+
+<ul>
+  
+
+
+  <div id="disqus_thread"></div>
+<script type="text/javascript">
+    var disqus_developer = 1;
+    var disqus_shortname = 'khalo'; // required: replace example with your forum shortname
+    
+    /* * * DON'T EDIT BELOW THIS LINE * * */
+    (function() {
+        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+        dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<a href="http://disqus.com" class="dsq-brlink">blog comments powered by <span class="logo-disqus">Disqus</span></a>
+
+
+
+
+</ul>
+
+
+      </div>
+
+      <footer>
+      </footer>
+
+    </div> <!-- /container -->
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script>window.jQuery || document.write('<script src="/assets/themes/twitter-2.0/js/jquery.min.js"><\/script>')</script>
+    <script src="/assets/themes/twitter-2.0/js/bootstrap.min.js"></script>
+    
+  </body>
+</html>
+
