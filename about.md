@@ -12,7 +12,7 @@ My interests are in environmental and resource economics, water economics in par
 
 <br />
 
-Visit [my website](http://taromieno.com/academic/) for more information.
+Visit [my website](http://taromieno.com/) for more information.
 
 <!-- ![center](/figs/tower.jpg) -->
 
