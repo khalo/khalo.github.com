@@ -3,7 +3,7 @@ layout: post
 title: Mapping point data on polygons using ggplot2( )
 tags: [R, spatial, ggplot2, grid, over]
 categories: [R, spatial]
-date: "10 August, 2015"
+date: "10 February, 2015"
 ---
 {% include JB/setup %} 
  

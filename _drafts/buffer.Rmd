@@ -4,7 +4,7 @@ title: Identifying spatial points within a Buffer of spatial objects
 bibliography: bibliography.bib
 tags: [R, spatial, ggplot2, rgeos]
 categories: [R, spatial]
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: "10 March, 2015"
 ---
 <!--{% include JB/setup %} -->
  

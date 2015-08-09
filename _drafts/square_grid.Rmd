@@ -4,7 +4,7 @@ title: Creating square grid dummy variables for regression analysis
 bibliography: bibliography.bib
 tags: [R, spatial, ggplot2, grid, over]
 categories: [R, spatial]
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: "2 June, 2015"
 ---
 <!--{% include JB/setup %} -->
 
